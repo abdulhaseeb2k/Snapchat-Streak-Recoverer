@@ -11,6 +11,39 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 PROFILES_FILE = os.path.join(DATA_DIR, 'profiles.json')
 APP_SETTINGS_FILE = os.path.join(DATA_DIR, 'app_settings.json')
 
+def get_chrome_profiles():
+    """Detects Google Chrome profiles and their user-defined names."""
+    base_path = os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\User Data')
+    local_state_path = os.path.join(base_path, 'Local State')
+    profiles = {"Test Browser (No Profile)": None}
+    
+    info_cache = {}
+    if os.path.exists(local_state_path):
+        try:
+            with open(local_state_path, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+                info_cache = state.get('profile', {}).get('info_cache', {})
+        except:
+            pass
+
+    if os.path.exists(base_path):
+        try:
+            for item in os.listdir(base_path):
+                p_path = os.path.join(base_path, item)
+                if os.path.isdir(p_path) and (item == 'Default' or item.startswith('Profile ')):
+                    if os.path.exists(os.path.join(p_path, 'Preferences')):
+                        # Try to get the friendly name from Local State
+                        display_name = item
+                        if item in info_cache:
+                            friendly_name = info_cache[item].get('name')
+                            if friendly_name:
+                                display_name = f"{friendly_name} ({item})"
+                        
+                        profiles[f"Chrome: {display_name}"] = item
+        except:
+            pass
+    return profiles
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -23,7 +56,8 @@ class App(ctk.CTk):
         # Load App Global Settings
         self.app_settings = self.load_json(APP_SETTINGS_FILE, {
             "appearance_mode": "System", 
-            "view_mode": "Grid"
+            "view_mode": "Grid",
+            "browser_profile": "Test Browser (No Profile)"
         })
         ctk.set_appearance_mode(self.app_settings.get("appearance_mode", "System"))
         self.view_mode = self.app_settings.get("view_mode", "Grid")
@@ -433,11 +467,11 @@ class App(ctk.CTk):
             return
             
         self.after(100, lambda: messagebox.showinfo("Starting", "Starting browser automation...\nPlease do not close the browser until you've submitted all forms."))
-        thread = threading.Thread(target=self.run_automation_thread, args=(current_settings, selected_friends))
+        thread = threading.Thread(target=self.run_automation_thread, args=(current_settings, selected_friends, self.app_settings))
         thread.start()
 
-    def run_automation_thread(self, current_settings, friends_list):
-        asyncio.run(run_recovery(current_settings, friends_list))
+    def run_automation_thread(self, current_settings, friends_list, app_settings):
+        asyncio.run(run_recovery(current_settings, friends_list, app_settings))
 
 
 class FriendEditWindow(ctk.CTkToplevel):
@@ -595,6 +629,16 @@ class AppSettingsWindow(ctk.CTkToplevel):
         self.view_menu = ctk.CTkOptionMenu(frame, values=["Grid", "List"], width=350)
         self.view_menu.pack(pady=5)
         self.view_menu.set(app_settings.get("view_mode", "Grid"))
+
+        ctk.CTkLabel(frame, text="Chrome Browser Profile", font=ctk.CTkFont(weight="bold")).pack(pady=(10, 0), anchor="w", padx=20)
+        self.available_profiles = get_chrome_profiles()
+        self.profile_options = list(self.available_profiles.keys())
+        self.profile_menu = ctk.CTkOptionMenu(frame, values=self.profile_options, width=350)
+        self.profile_menu.pack(pady=5)
+        
+        current_prof = app_settings.get("browser_profile", "Test Browser (No Profile)")
+        if current_prof not in self.profile_options: current_prof = self.profile_options[0]
+        self.profile_menu.set(current_prof)
         
         ctk.CTkButton(frame, text="❓ How to Use (Help)", fg_color="gray30", height=40, command=self.open_help).pack(pady=(20, 10), padx=20, fill="x")
         ctk.CTkButton(frame, text="👨‍💻 About Developer", fg_color="gray30", height=40, command=self.open_about).pack(pady=(0, 15), padx=20, fill="x")
@@ -609,9 +653,14 @@ class AppSettingsWindow(ctk.CTkToplevel):
         AboutWindow(self)
 
     def save(self):
+        selected_display = self.profile_menu.get()
+        folder_name = self.available_profiles.get(selected_display)
+        
         new_app_settings = {
             "appearance_mode": self.appearance_menu.get(),
-            "view_mode": self.view_menu.get()
+            "view_mode": self.view_menu.get(),
+            "browser_profile": selected_display,
+            "browser_profile_folder": folder_name
         }
         self.save_callback(new_app_settings)
         self.destroy()
