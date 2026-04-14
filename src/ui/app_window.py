@@ -43,6 +43,8 @@ class AppWindow(ctk.CTk):
 
         # ── Responsive tracking ──
         self._resize_timer = None
+        self._current_cols = 0
+        self._save_timer = None
 
         # ── Build UI ──
         self._build_header()
@@ -127,6 +129,7 @@ class AppWindow(ctk.CTk):
 
     def _render_grid(self, friends: list, width: int):
         cols = max(1, width // 210)
+        self._current_cols = cols
         usable_width = width - (cols * 10) - 25
         card_w = max(180, usable_width // cols)
 
@@ -214,10 +217,17 @@ class AppWindow(ctk.CTk):
         if event.widget == self and self.view_mode == "Grid":
             if self._resize_timer:
                 self.after_cancel(self._resize_timer)
-            self._resize_timer = self.after(200, self._check_layout)
+            self._resize_timer = self.after(250, self._check_layout)
 
     def _check_layout(self):
-        if self.data.current_profile_name:
+        if not self.data.current_profile_name:
+            return
+        width = self._friends_frame.winfo_width()
+        if width <= 1:
+            return
+        new_cols = max(1, width // 210)
+        # Only rebuild if column count actually changed
+        if new_cols != self._current_cols:
             self._refresh_friends_list()
 
     # ═══════════════════════════════════════════════════════════
@@ -292,7 +302,14 @@ class AppWindow(ctk.CTk):
     # ═══════════════════════════════════════════════════════════
 
     def _on_friend_toggle(self, index: int, selected: bool):
-        self.data.toggle_friend(index, selected)
+        # Update in-memory immediately, debounce disk write
+        friends = self.data.get_friends()
+        if 0 <= index < len(friends):
+            friends[index]['selected'] = selected
+        # Debounce save to avoid blocking UI on rapid clicks
+        if self._save_timer:
+            self.after_cancel(self._save_timer)
+        self._save_timer = self.after(500, self.data.save_profiles)
 
     def _open_edit_friend(self, index: int):
         FriendEditWindow(

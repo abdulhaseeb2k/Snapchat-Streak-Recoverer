@@ -61,36 +61,44 @@ COLORS = {
     "status_text":      ("gray30", "gray70"),
 }
 
-# ──────────────────────────── Font Presets ─────────────────────
+# ──────────────────────────── Font Presets (Cached) ─────────────
+# Fonts are created lazily and cached to avoid re-allocation on every widget.
+_font_cache: dict[str, ctk.CTkFont] = {}
+
+def _get_font(key: str, **kwargs) -> ctk.CTkFont:
+    if key not in _font_cache:
+        _font_cache[key] = ctk.CTkFont(**kwargs)
+    return _font_cache[key]
+
 def font_title():
-    return ctk.CTkFont(family="Inter", size=24, weight="bold")
+    return _get_font("title", family="Inter", size=24, weight="bold")
 
 def font_heading():
-    return ctk.CTkFont(family="Inter", size=18, weight="bold")
+    return _get_font("heading", family="Inter", size=18, weight="bold")
 
 def font_subheading():
-    return ctk.CTkFont(family="Inter", size=14, weight="bold")
+    return _get_font("subheading", family="Inter", size=14, weight="bold")
 
 def font_body():
-    return ctk.CTkFont(family="Inter", size=14)
+    return _get_font("body", family="Inter", size=14)
 
 def font_body_bold():
-    return ctk.CTkFont(family="Inter", size=14, weight="bold")
+    return _get_font("body_bold", family="Inter", size=14, weight="bold")
 
 def font_small():
-    return ctk.CTkFont(family="Inter", size=12)
+    return _get_font("small", family="Inter", size=12)
 
 def font_tiny():
-    return ctk.CTkFont(family="Inter", size=11)
+    return _get_font("tiny", family="Inter", size=11)
 
 def font_button():
-    return ctk.CTkFont(family="Inter", size=14, weight="bold")
+    return _get_font("button", family="Inter", size=14, weight="bold")
 
 def font_avatar():
-    return ctk.CTkFont(size=20, weight="bold")
+    return _get_font("avatar", size=20, weight="bold")
 
 def font_large_button():
-    return ctk.CTkFont(family="Inter", size=16, weight="bold")
+    return _get_font("large_button", family="Inter", size=16, weight="bold")
 
 # ──────────────────────────── Default Settings ─────────────────
 DEFAULT_APP_SETTINGS = {
