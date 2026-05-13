@@ -4,16 +4,13 @@ AppSettingsWindow — dialog for global application settings.
 
 import customtkinter as ctk
 from src.constants import COLORS, font_heading, font_body_bold, font_button
-from src.core.chrome_profiles import get_chrome_profiles
-
-
 class AppSettingsWindow(ctk.CTkToplevel):
-    """Modal dialog for global app settings (appearance, view mode, browser profile)."""
+    """Modal dialog for global app settings (appearance, view mode)."""
 
     def __init__(self, parent, app_settings: dict, save_callback):
         super().__init__(parent)
         self.title("App Global Settings")
-        self.geometry("460x560")
+        self.geometry("460x490")
         self.grab_set()
 
         self._save_callback = save_callback
@@ -43,21 +40,34 @@ class AppSettingsWindow(ctk.CTkToplevel):
         self._view_menu.pack(pady=5)
         self._view_menu.set(app_settings.get("view_mode", "Grid"))
 
-        # ── Browser Profile ──
-        ctk.CTkLabel(frame, text="Chrome Browser Profile", font=font_body_bold()).pack(
+        # ── Browser Extension ──
+        ctk.CTkLabel(frame, text="Browser Extension Path", font=font_body_bold()).pack(
             pady=(10, 0), anchor="w", padx=20
         )
-        self._available_profiles = get_chrome_profiles()
-        self._profile_options = list(self._available_profiles.keys())
-        self._profile_menu = ctk.CTkOptionMenu(
-            frame, values=self._profile_options, width=360
-        )
-        self._profile_menu.pack(pady=5)
-
-        current = app_settings.get("browser_profile", "Test Browser (No Profile)")
-        if current not in self._profile_options:
-            current = self._profile_options[0]
-        self._profile_menu.set(current)
+        ext_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        ext_frame.pack(fill="x", padx=20, pady=5)
+        
+        from src.constants import DEFAULT_EXTENSION_DIR
+        default_ext = app_settings.get("extension_path", "").strip()
+        if not default_ext:
+            default_ext = DEFAULT_EXTENSION_DIR
+            
+        self._ext_path_var = ctk.StringVar(value=default_ext)
+        ctk.CTkEntry(
+            ext_frame, textvariable=self._ext_path_var, state="readonly"
+        ).pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        ctk.CTkButton(
+            ext_frame, text="Browse...", width=60,
+            fg_color=COLORS["btn_secondary"], hover_color=COLORS["btn_secondary_hover"],
+            command=self._browse_extension
+        ).pack(side="left", padx=(0, 5))
+        
+        ctk.CTkButton(
+            ext_frame, text="Clear", width=50,
+            fg_color=COLORS["danger"], hover_color=COLORS["danger_hover"],
+            command=lambda: self._ext_path_var.set("")
+        ).pack(side="left")
 
         # ── Utility buttons ──
         from src.ui.dialogs.help_window import HelpWindow
@@ -82,14 +92,15 @@ class AppSettingsWindow(ctk.CTkToplevel):
         ).pack(pady=10)
 
     def _save(self):
-        selected_display = self._profile_menu.get()
-        folder_name = self._available_profiles.get(selected_display)
-
-        new_settings = {
+        settings = {
             "appearance_mode": self._appearance_menu.get(),
             "view_mode": self._view_menu.get(),
-            "browser_profile": selected_display,
-            "browser_profile_folder": folder_name,
+            "extension_path": self._ext_path_var.get()
         }
-        self._save_callback(new_settings)
+        self._save_callback(settings)
         self.destroy()
+
+    def _browse_extension(self):
+        path = ctk.filedialog.askdirectory(title="Select Unpacked Extension Folder")
+        if path:
+            self._ext_path_var.set(path)

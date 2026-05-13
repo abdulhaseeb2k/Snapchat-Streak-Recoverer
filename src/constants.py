@@ -6,18 +6,30 @@ All paths, colours, fonts, and version info live here.
 import os
 import customtkinter as ctk
 
-# ──────────────────────────── Paths ────────────────────────────
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, 'data')
-PROFILES_FILE = os.path.join(DATA_DIR, 'profiles.json')
-APP_SETTINGS_FILE = os.path.join(DATA_DIR, 'app_settings.json')
-
 # ──────────────────────────── Version ──────────────────────────
-VERSION = "3.0"
+VERSION = "1"
 APP_NAME = "Snapchat Streak Recoverer"
 APP_SUBTITLE = "Automated Support Form Submitter"
 DEVELOPER = "Abdul Haseeb"
 GITHUB_URL = "https://github.com/abdulhaseeb2k/Snapchat-Streak-Recoverer"
+
+# ──────────────────────────── Paths ────────────────────────────
+import sys
+
+if getattr(sys, 'frozen', False):
+    # When running as an executable, store data in User's AppData to avoid permission issues
+    DATA_DIR = os.path.join(os.environ.get('APPDATA'), APP_NAME)
+    BASE_DIR = sys._MEIPASS
+else:
+    # When running as a script, store data locally in the project folder
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATA_DIR = os.path.join(BASE_DIR, 'data')
+
+PROFILES_FILE = os.path.join(DATA_DIR, 'profiles.json')
+APP_SETTINGS_FILE = os.path.join(DATA_DIR, 'app_settings.json')
+BROWSER_DATA_DIR = os.path.join(DATA_DIR, 'browser_profile')
+DEFAULT_EXTENSION_DIR = os.path.join(BASE_DIR, 'extensions', 'captchasonic')
+APP_ICON_PATH = os.path.join(BASE_DIR, 'assets', 'APP-ICONE.ico')
 
 # ──────────────────────────── Colour Palette ───────────────────
 # A curated dark-mode-friendly palette
@@ -104,8 +116,6 @@ def font_large_button():
 DEFAULT_APP_SETTINGS = {
     "appearance_mode": "System",
     "view_mode": "Grid",
-    "browser_profile": "Test Browser (No Profile)",
-    "browser_profile_folder": None
 }
 
 DEFAULT_PROFILE_SETTINGS = {

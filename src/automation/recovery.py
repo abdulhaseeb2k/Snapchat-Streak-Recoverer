@@ -8,6 +8,8 @@ import os
 import re
 from datetime import datetime
 from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
+from playwright_recaptcha.recaptchav2.async_solver import AsyncSolver
 from src.constants import SNAPCHAT_FORM_URL
 
 
@@ -18,7 +20,7 @@ async def _fill_form(page, settings: dict, friend_username: str):
     try:
         await page.wait_for_selector('#request_custom_fields_24281229', timeout=15000)
     except Exception as e:
-        print(f"  ⚠ Form may not have loaded smoothly: {e}")
+        print(f"  [WARN] Form may not have loaded smoothly: {e}")
 
     # Fill each field, silently skip on failure
     fields = [
@@ -33,35 +35,39 @@ async def _fill_form(page, settings: dict, friend_username: str):
     for selector, value in fields:
         try:
             await page.fill(selector, value, timeout=2000)
+            await asyncio.sleep(0.5) # Slight delay between typing fields
         except Exception:
             pass
 
+    # Try to solve CAPTCHA automatically
+    try:
+        print("  [INFO] Looking for reCAPTCHA...")
+        solver = AsyncSolver(page)
+        try:
+            await solver.solve_recaptcha()
+            print("  [OK] reCAPTCHA solved automatically!")
+        except Exception as e:
+            # If it fails, it's fine, user can still do it manually
+            print(f"  [INFO] Auto-solve skipped: {e}")
+    except Exception as e:
+        print(f"  [DEBUG] Recaptcha solver init error: {e}")
 
-def _resolve_profile_folder(app_settings: dict) -> str | None:
-    """Determine the Chrome profile folder from app settings."""
-    folder = app_settings.get("browser_profile_folder")
-    if folder:
-        return folder
-
-    # Fallback: extract from display name
-    display = app_settings.get("browser_profile", "")
-    if "Chrome:" not in display:
-        return None
-
-    match = re.search(r'\(([^)]+)\)$', display)
-    if match:
-        return match.group(1)
-    return display.replace("Chrome: ", "").strip() or None
-
-
-def _find_chrome_executable() -> str | None:
-    """Find the Chrome executable on Windows."""
-    candidates = [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
-    ]
-    return next((p for p in candidates if os.path.exists(p)), None)
+    # Auto-submit the form
+    try:
+        print("  [INFO] Submitting form...")
+        # Standard Zendesk/Snapchat submit button selectors
+        submit_selectors = ['input[type="submit"]', 'button[type="submit"]', 'input[name="commit"]']
+        for selector in submit_selectors:
+            try:
+                btn = await page.query_selector(selector)
+                if btn:
+                    await btn.click()
+                    print("  [OK] Submit button clicked!")
+                    break
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"  [WARN] Auto-submit failed: {e}")
 
 
 async def run_recovery(
@@ -73,45 +79,53 @@ async def run_recovery(
     on_error=None,
 ):
     """
-    Run the recovery automation.
+    Run the recovery automation using a clean browser context with stealth.
 
     Args:
         settings: Profile settings dict (username, email, etc.)
         friends_list: List of friend usernames to recover
-        app_settings: Global app settings (browser profile, etc.)
+        app_settings: Global app settings
         on_progress: Optional callback(current_index, total, friend_username)
         on_complete: Optional callback()
         on_error: Optional callback(error_message)
     """
     async with async_playwright() as p:
-        profile_folder = _resolve_profile_folder(app_settings)
-        use_chrome_profile = bool(profile_folder)
-
+        browser = None
+        context = None
         try:
-            if use_chrome_profile:
-                user_data_dir = os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\User Data')
-                launch_args = [
-                    f"--user-data-dir={user_data_dir}",
-                    f"--profile-directory={profile_folder}",
-                ]
-                executable = _find_chrome_executable()
-                print(f"🌐 Launching Chrome with profile: {profile_folder}")
-                browser = await p.chromium.launch(
-                    executable_path=executable,
+            print("[INFO] Launching Recoverer Browser...")
+            
+            ext_path = app_settings.get("extension_path", "").strip()
+            
+            from src.constants import BROWSER_DATA_DIR, DEFAULT_EXTENSION_DIR
+            
+            if not ext_path and os.path.exists(DEFAULT_EXTENSION_DIR):
+                ext_path = DEFAULT_EXTENSION_DIR
+            
+            if ext_path and os.path.isdir(ext_path):
+                if not os.path.exists(BROWSER_DATA_DIR):
+                    os.makedirs(BROWSER_DATA_DIR)
+                    
+                print(f"[INFO] Loading unpacked extension from: {ext_path}")
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=BROWSER_DATA_DIR,
                     headless=False,
-                    args=launch_args,
+                    args=[
+                        f"--disable-extensions-except={ext_path}",
+                        f"--load-extension={ext_path}"
+                    ]
                 )
-                context = await browser.new_context(no_viewport=True)
+                page = context.pages[0] if context.pages else await context.new_page()
             else:
-                print("🌐 Launching Test Browser (Chromium)...")
+                # Standard launch — reliable and clean
                 browser = await p.chromium.launch(headless=False)
                 context = await browser.new_context()
-
-            # Get a page
-            if context.pages:
-                page = context.pages[0]
-            else:
+                # Always open a fresh page
                 page = await context.new_page()
+            
+            # Apply stealth to the page to look like a real user
+            await Stealth().apply_stealth_async(page)
+            
             await page.bring_to_front()
 
             total = len(friends_list)
@@ -122,13 +136,13 @@ async def run_recovery(
 
                     print(f"  [{idx+1}/{total}] Processing: {friend}")
                     await _fill_form(page, settings, friend)
-                    print(f"  ✅ Form filled for {friend} — Solve Captcha & Submit")
+                    print(f"  [OK] Form filled for {friend} — Solve Captcha (if auto-solve skipped) & Submit")
 
-                    # Wait for user to submit (poll until URL changes)
+                    # Wait for user to submit (poll until URL changes or page closed)
                     while True:
                         await asyncio.sleep(0.5)
                         if page.is_closed():
-                            print("  ⛔ Page closed by user.")
+                            print("  [HALT] Page closed by user.")
                             return
 
                         if "/requests/new" not in page.url:
@@ -140,31 +154,30 @@ async def run_recovery(
                         except Exception:
                             break
 
-                    print(f"  ✅ Submitted for {friend}!")
+                    print(f"  [DONE] Submitted for {friend}!")
                     delay = float(settings.get('refresh_delay', 1.0))
                     await asyncio.sleep(delay)
 
                 except Exception as e:
-                    print(f"  ❌ Error for {friend}: {e}")
+                    print(f"  [ERROR] For {friend}: {e}")
                     continue
 
-            print("🎉 All friends processed! Closing browser...")
+            print("[COMPLETE] All friends processed!")
             if on_complete:
                 on_complete()
 
             await asyncio.sleep(2)
-            await browser.close()
+            if context:
+                await context.close()
+            if browser:
+                await browser.close()
 
         except Exception as e:
             err = str(e)
             if "Target page, context or browser has been closed" in err:
-                print("  ⛔ Browser closed by user.")
-            elif "already in use" in err.lower() or "lock" in err.lower():
-                msg = "Google Chrome is already running. Please close it and try again."
-                print(f"  ❌ {msg}")
-                if on_error:
-                    on_error(msg)
+                print("  [HALT] Browser closed by user.")
             else:
-                print(f"  ❌ Automation Error: {e}")
+                print(f"  [ERROR] Automation Error: {e}")
                 if on_error:
                     on_error(str(e))
+

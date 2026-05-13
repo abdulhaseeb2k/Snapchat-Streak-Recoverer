@@ -1,3 +1,9 @@
 customtkinter
 playwright
+playwright-stealth
+playwright-recaptcha
+SpeechRecognition
+pydub
+requests
 packaging
+pyinstaller

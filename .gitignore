@@ -1,4 +1,14 @@
-﻿data/
+data/
 __pycache__/
 *.pyc
 *.pyo
+build/
+dist/
+installer_output/
+*.spec
+
+# Added by code-review-graph
+.code-review-graph/
+build_temp/
+build/
+ 

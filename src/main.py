@@ -14,6 +14,7 @@ def run():
 
     data = DataManager()
     app = AppWindow(data)
+    app.update()
     app.mainloop()
 
 

@@ -34,7 +34,8 @@ class StatusBar(ctk.CTkFrame):
 
     def set_processing(self, current: int, total: int, friend: str):
         truncated = friend if len(friend) <= 20 else friend[:17] + "..."
-        self._label.configure(text=f"⏳ Processing {current+1}/{total}: {truncated}")
+        # Format as [2/10] for better visibility
+        self._label.configure(text=f"⏳ [{current+1}/{total}] Processing: {truncated}")
         self._progress.pack(side="right", padx=12, pady=8)
         self._progress.set((current + 1) / total)
 

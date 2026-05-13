@@ -10,13 +10,14 @@ from src.constants import COLORS, font_heading, font_body_bold, font_button
 class FriendEditWindow(ctk.CTkToplevel):
     """Modal dialog to edit a friend's name and username."""
 
-    def __init__(self, parent, friend_data: dict, save_callback):
+    def __init__(self, parent, friend_data: dict, save_callback, delete_callback=None):
         super().__init__(parent)
         self.title("Edit Friend")
-        self.geometry("400x320")
+        self.geometry("400x360")
         self.grab_set()
 
         self._save_callback = save_callback
+        self._delete_callback = delete_callback
 
         ctk.CTkLabel(self, text="Edit Contact Details", font=font_heading()).pack(pady=20)
 
@@ -37,11 +38,22 @@ class FriendEditWindow(ctk.CTkToplevel):
         self._user_entry.pack(pady=5)
         self._user_entry.insert(0, friend_data.get('username', ''))
 
+        action_row = ctk.CTkFrame(self, fg_color="transparent")
+        action_row.pack(fill="x", padx=20, pady=(0, 20))
+
         ctk.CTkButton(
-            self, text="Update Friend", height=42, font=font_button(),
+            action_row, text="Update Friend", height=42, font=font_button(),
             fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
             command=self._save,
-        ).pack(pady=20)
+        ).pack(side="left", expand=True, fill="x", padx=(0, 6))
+
+        ctk.CTkButton(
+            action_row, text="Delete", width=110, height=42,
+            fg_color="transparent", border_width=1,
+            border_color=COLORS["danger"], text_color=COLORS["danger_text"],
+            hover_color=COLORS["danger_subtle_bg"],
+            command=self._delete,
+        ).pack(side="right", padx=(6, 0))
 
     def _save(self):
         new_data = {
@@ -51,5 +63,15 @@ class FriendEditWindow(ctk.CTkToplevel):
         if not new_data["username"]:
             messagebox.showerror("Error", "Username is required.")
             return
-        self._save_callback(new_data)
+        result = self._save_callback(new_data)
+        if result is False:
+            return
+        self.destroy()
+
+    def _delete(self):
+        if not self._delete_callback:
+            return
+        if not messagebox.askyesno("Delete Friend", "Delete this friend from the list?"):
+            return
+        self._delete_callback()
         self.destroy()
